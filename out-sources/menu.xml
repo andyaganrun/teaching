@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<menus>
+    <node label="Mail">
+        <node label="Inbox"/>
+        <node label="Personal Folder">
+            <node label="Demo"/>
+            <node label="Personal"/>
+            <node label="Saved Mail"/>
+            <node label="bar"/>
+        </node>
+        <node label="Calendar"/>
+        <node label="Sent"/>
+        <node label="Trash"/>
+    </node>
+</menus>

@@ -1,0 +1,41 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<MainElement title="第一章    民族知识测试" time="1" number="12" 
+	pass="祝贺你！通过考试了" fail="没有通过！继续努力吧" 
+	rightface="courses/01/part/right.swf" 
+	right="您答对了!" wrong="您答错了！正确的是："
+	wrongface="courses/01/part/wrong.swf" 
+	timeoverface="courses/01/part/timeover.swf">
+
+	<Question answer="B" Value="1、锡伯族的聚居地是（      ）"  Weight="7" multi="true"> 
+		<Answers id="A" value="云南省"/>
+		<Answers id="B" value="新疆维吾尔自治区"/>
+		<Answers id="C" value="黑龙江省"/>
+        <Answers id="D" value="青海省"/>
+	</Question>
+	<Question answer="AD" Value="2、下列不是生活在东北地区的民族有（）" Weight="8" multi="true">
+		<Answers id="A" value="赫哲族"/>
+		<Answers id="B" value="达斡尔族"/>
+        <Answers id="C" value="鄂伦春族"/>
+        <Answers id="D" value="哈萨克族"/>
+	</Question>
+	<Question answer="BCD" Value="3、广西有（  ）个世居少数民族" Weight="4" multi="true">
+		<Answers id="A" value="10"/>
+		<Answers id="B" value="11"/>
+        <Answers id="C" value="12"/>
+        <Answers id="D" value="13"/>
+        <Answers id="E" value="14"/>
+	</Question>
+	<Question answer="B" Value="4、我国共有几个（  ）少数民族自治区" Weight="3" multi="false">
+		<Answers id="A" value="4"/>
+		<Answers id="B" value="5"/>
+        <Answers id="C" value="6"/>
+        <Answers id="D" value="7"/>
+	</Question>
+	<Question answer="C" Value="5、浙江景宁县是我国唯一的（     ）族自治县" Weight="2" multi="false">
+		<Answers id="A" value="瑶族"/>
+		<Answers id="B" value="侗族"/>
+        <Answers id="C" value="畲族"/>
+        <Answers id="D" value="黎族"/>
+	</Question>
+
+</MainElement>

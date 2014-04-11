@@ -1,0 +1,37 @@
+﻿ <root>
+ 	<!-- 本配置中，style为1的代表button型，为2代表swf -->
+	<top backgroundStyle="1">
+		<image>img/top.png</image>
+	</top>
+	<middle>
+		<image>img/middle.png</image>
+	</middle>
+	<down>
+		<image>img/down.png</image>
+	</down>
+	<catalog>
+		<image>img/catalog.png</image>
+	</catalog>
+	<lastPage>
+		<image>img/lastpage.png</image>
+	</lastPage>
+	<nextPage>
+		<image>img/nextpage.png</image>
+	</nextPage>
+
+	<welcome-swf enterStyle="2">swf/start.swf</welcome-swf>
+
+	
+	<defaultLeafIcon>
+		<image>img/treeleaf.png</image>
+	</defaultLeafIcon>
+	<folderClosedIcon>
+		<image>img/folderclose.png</image>
+	</folderClosedIcon>
+	<folderOpenIcon>
+		<image>img/folderopen.png</image>
+	</folderOpenIcon>
+	
+
+	<down-catalog-style>1</down-catalog-style>
+ </root>

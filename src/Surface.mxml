@@ -1,0 +1,1190 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:WindowedApplication xmlns:fx="http://ns.adobe.com/mxml/2009"
+					   xmlns:s="library://ns.adobe.com/flex/spark"
+					   xmlns:mx="library://ns.adobe.com/flex/mx"
+					   width="1024"  height="768" 
+					   xmlns:teach="com.teaching.*"
+					   showStatusBar="false"
+					   >
+	<fx:Style>
+		@namespace mx "library://ns.adobe.com/flex/mx";  
+		.Tree {  
+			defaultLeafIcon: ClassReference（null）; 
+			folderClosedIcon: ClassReference(null);  
+			folderOpenIcon: ClassReference(null);  
+		}
+	</fx:Style>
+	<fx:Declarations>
+		<!-- 将非可视元素（例如服务、值对象）放在此处 -->
+		
+		<s:Move id="moveLeftEffect" target="{leftTree}"/> 
+		<s:Move id="moveRightEffect"  target="{rightSwf}"/>
+		<s:RadioButtonGroup id="quizSelection" itemClick="selectQuiz(event);"/>
+	</fx:Declarations>
+	<fx:Script> 
+		<![CDATA[
+			import flash.events.Event;
+			import flash.events.TimerEvent;
+			import flash.net.URLLoader;
+			import flash.utils.Timer;
+			
+			import mx.collections.ArrayCollection;
+			import mx.containers.TabNavigator;
+			import mx.controls.Alert;
+			import mx.core.UIComponent;
+			import mx.events.CloseEvent;
+			import mx.events.FlexEvent;
+			import mx.events.IndexChangedEvent;
+			import mx.events.ItemClickEvent;
+			import mx.events.MoveEvent;
+			import mx.events.ResizeEvent;
+			import mx.messaging.management.Attribute;
+			import mx.rpc.events.ResultEvent;
+			import mx.utils.object_proxy;
+			
+			import spark.components.CheckBox;
+			import spark.components.NavigatorContent;
+			import spark.components.RadioButton;
+			import spark.components.TabBar;
+			import spark.events.TextOperationEvent;
+			import spark.primitives.BitmapImage;
+			
+			
+			private var TREE_WIDTH_BEFORE_MOVE:int = 0;
+			private var TREE_WIDTH_AFTER_MOVE:int = 0;
+			
+			private var SWF_BEFORE_X:int = 268;
+			private var SWF_AFTER_X:int;
+			
+			private var TREE_BEFORE_X:int = 0;
+			private var TREE_AFTER_X:int = 0;
+			
+			//			protected function testWindowEvent(event:Event):void{	  //改变之前
+			////				Alert.show("testWindowEvent");
+			//				TREE_WIDTH_AFTER_MOVE = leftTree.width;
+			////				if(TREE_WIDTH_AFTER_MOVE == TREE_WIDTH_BEFORE_MOVE){
+			////					Alert.show("no change");
+			////				}else{
+			////					Alert.show("change");
+			////				}
+			//				if(TREE_WIDTH_AFTER_MOVE != TREE_WIDTH_BEFORE_MOVE){
+			//					if(TREE_BEFORE_X == 0){    //展开变化
+			//						rightSwf.x = leftTree.width;
+			//						rightSwf.y = 0;
+			//						
+			//						leftTree.x = 0;
+			//					}else{   //收缩变化
+			//						rightSwf.x = 30;
+			//						rightSwf.y = 30;
+			//						
+			//						leftTree.x = -leftTree.width;
+			//					}
+			//				}
+			//			}
+			//			
+			//			protected function windowedapplication1_displayStateChangingHandler(event:NativeWindowDisplayStateEvent):void  //改变之后
+			//			{
+			//				TREE_WIDTH_BEFORE_MOVE = leftTree.width;
+			//				SWF_BEFORE_X = rightSwf.x;
+			//				TREE_BEFORE_X = leftTree.x;
+			//			}
+			
+			private var pageSize:int; //共有页数
+			private var curPage:int = 1; // 当前页码  
+			private var curQuesion:int = 0; // 当前题目
+			private var dirCur:String;//分页时多个swf所在文件目录
+			private var myXML:XML = null;
+			private var surfaceXML:XML = null;
+			private var tabList : ArrayCollection = new ArrayCollection();
+			private var groupMap:Dictionary = new Dictionary();
+			
+			private var SWFWIDTH:int = 0;
+			private var SWFHEIGHT:int = 0;
+			
+			protected function init():void{	
+				var XML_URL:String = "cfg/menu.xml"; //解析左侧树形菜单
+				var myXMLURL:URLRequest = new URLRequest(XML_URL); 
+				var myLoader:URLLoader = new URLLoader(myXMLURL);
+				myLoader.addEventListener(Event.COMPLETE, xmlLoadedhandle); 
+				
+				var SURFACE_XML:String = "cfg/surface-cfg.xml"; //解析各个部分的底图
+				var SURFACE_XMLURL:URLRequest = new URLRequest(SURFACE_XML); 
+				var SURFACE_XMLLoader:URLLoader = new URLLoader(SURFACE_XMLURL);
+				SURFACE_XMLLoader.addEventListener(Event.COMPLETE, surfaceXmlLoadedhandle); 
+				
+				var TAG_URL:String = "cfg/tag.xml";//解析导航栏的按钮配置
+				var myTAGURL:URLRequest = new URLRequest(TAG_URL); 
+				var myTagLoader:URLLoader = new URLLoader(myTAGURL);
+				myTagLoader.addEventListener(Event.COMPLETE, tagLoadedhandle); 
+				moveImage();
+				SWFWIDTH = rightSwfLoader.width;
+				SWFHEIGHT = rightSwfLoader.height;
+				//MenuTree.addEventListener(EXPAND_COMPLETE_EVENT,expandComplete);
+			}	
+			
+			protected function welcomeLoaderInit():void{	
+				var SURFACE_XML:String = "cfg/surface-cfg.xml"; //解析各个部分的底图
+				var SURFACE_XMLURL:URLRequest = new URLRequest(SURFACE_XML); 
+				var SURFACE_XMLLoader:URLLoader = new URLLoader(SURFACE_XMLURL);
+				SURFACE_XMLLoader.addEventListener(Event.COMPLETE, welcomeSurfaceLoadedhandle); 
+			}
+			
+			protected function welcomeSurfaceLoadedhandle(event:Event):void
+			{
+				surfaceXML = XML(event.target.data);
+				var welcome:XMLList = surfaceXML.child("welcome-swf");
+				if(welcome.@enterStyle == "1"){
+					welcomeLoaderButton.visible = true;
+					welcomeLoaderSwf.visible = false;
+				}else if(welcome.@enterStyle == "2"){
+					welcomeLoaderButton.visible = false;
+					welcomeLoaderSwf.visible = true;
+				}
+				if(welcome.toString() != ""){
+					var imgLevelone:File = File.applicationDirectory;
+					imgLevelone = imgLevelone.resolvePath(welcome.text());
+					welcomeLoader.source = imgLevelone.nativePath;
+				}
+				
+			}
+			
+			protected function welcomeInit():void{
+				var SURFACE_XML:String = "cfg/surface-cfg.xml";
+				var SURFACE_XMLURL:URLRequest = new URLRequest(SURFACE_XML); 
+				var SURFACE_XMLLoader:URLLoader = new URLLoader(SURFACE_XMLURL);
+				SURFACE_XMLLoader.addEventListener(Event.COMPLETE, welcomeXmlLoadedhandle); 
+			}
+			protected function welcomeXmlLoadedhandle(event:Event):void {
+				surfaceXML = XML(event.target.data);
+				var welcome:XMLList = surfaceXML.child("welcome-swf");
+				if(welcome.toString() != ""){
+					var imgLevelone:File = File.applicationDirectory;
+					imgLevelone = imgLevelone.resolvePath(welcome.text());
+					welcomeLoader.source = imgLevelone.nativePath;
+				}
+			}
+			
+			protected function xmlLoadedhandle(event:Event):void{ 
+				myXML = XML(event.target.data);	
+				MenuTree.dataProvider = myXML;
+			}
+			
+			import com.teaching.IconUtil;
+			protected function tagLoadedhandle(event:Event):void{ 
+				var tagXML:XML = XML(event.target.data);
+				
+				if(tagXML.child("tag")!=null && tagXML.child("tag").length()>0){
+					for(var i:int=0;i<tagXML.child("tag").length();i++){
+						var label:String = tagXML.tag[i].label;
+						var url:String = tagXML.tag[i].url;
+						var src:String = tagXML.tag[i].src;
+						
+						var n:NavigatorContent = new NavigatorContent();
+						n.label = label;
+						n.icon =  IconUtil.getClass(n,src);
+						mytab.addChild(n);
+						groupMap[label] = url; //存放tag名称与swf文件url的对应关系
+					}
+				}
+			}
+			
+			/*	import spark.events.IndexChangeEvent;
+			private function changeTabSelection(event:IndexChangeEvent): void {
+			var s:NavigatorContent = TabBar(event.target).selectedItem;
+			var lable:String = s.label;
+			var url:String = groupMap[lable];
+			rightSwfLoader.x = 0;
+			rightSwfLoader.y = 0;
+			rightSwfLoader.percentHeight = 100;
+			rightSwfLoader.percentWidth = 100;
+			rightSwfLoader.source = "swf/" + url;
+			rightVideoLoader.source = "";
+			rightVideoLoader.visible = false;			
+			}
+			*/
+			protected function changeTabSelection(event:IndexChangedEvent):void
+			{
+				var lable:String = mytab.getTabAt(mytab.selectedIndex).label;
+				var url:String = groupMap[lable];
+				rightSwfLoader.x = 0;
+				rightSwfLoader.y = 0;
+				rightSwfLoader.percentHeight = 100;
+				rightSwfLoader.percentWidth = 100;
+				rightSwfLoader.source = "swf/" + url;
+				rightVideoLoader.source = "";
+				rightVideoLoader.visible = false;		
+			}
+			
+			protected function surfaceXmlLoadedhandle(event:Event):void{ 
+				surfaceXML = XML(event.target.data);	
+				var top_cfg:XMLList = surfaceXML.child("top");
+				if(top_cfg.@backgroundStyle == "1"){
+					topImage.visible = true;
+					topSwf.visible = false;
+					if(top_cfg.toString() != ""){
+						if(top_cfg.hasOwnProperty("image")){
+							var imgLevelonea:File = File.applicationDirectory;
+							imgLevelonea = imgLevelonea.resolvePath(top_cfg.child("image").text());
+							if(imgLevelonea.exists&&!imgLevelonea.isDirectory){
+								topImage.source = imgLevelonea.nativePath;
+							}
+						}
+					}
+				}else if(top_cfg.@backgroundStyle == "2"){
+					topImage.visible = false;
+					topSwf.visible = true;
+				}
+				
+				
+				var middle_cfg:XMLList = surfaceXML.child("middle");
+				if(middle_cfg.toString() != ""){
+					if(middle_cfg.hasOwnProperty("image")){
+						var imgLeveloneb:File = File.applicationDirectory;
+						imgLeveloneb = imgLeveloneb.resolvePath(middle_cfg.child("image").text());
+						if(imgLeveloneb.exists&&!imgLeveloneb.isDirectory){
+							middleImage.source = imgLeveloneb.nativePath;
+						}
+					}
+				}
+				
+				var down_cfg:XMLList = surfaceXML.child("down");
+				if(down_cfg.toString() != ""){
+					if(down_cfg.hasOwnProperty("image")){
+						var imgLevelonec:File = File.applicationDirectory;
+						imgLevelonec = imgLevelonec.resolvePath(down_cfg.child("image").text());
+						if(imgLevelonec.exists&&!imgLevelonec.isDirectory){
+							downImage.source = imgLevelonec.nativePath;
+						}
+					}
+				}
+				
+				var down_catalog_cfg:XMLList = surfaceXML.child("down-catalog-style");
+				if(down_catalog_cfg.toString() != ""){
+					var style:String = down_catalog_cfg.text();
+					if(style == "1"){
+						dowmButtonBox.visible = true;
+						dowmSwfBox.visible = false;
+					}else if(style == "2"){
+						dowmButtonBox.visible = false;
+						dowmSwfBox.visible = true;
+					}
+				}
+			}
+			
+			protected function nextItem(event:MouseEvent):void
+			{
+				if(leftTree.x<0){
+					return;
+				}
+				var selectIndex:int = MenuTree.selectedIndex;
+				if(selectIndex == -1){
+					selectIndex = 0;
+					MenuTree.selectedIndex = 0;
+					MenuTree.scrollToIndex(MenuTree.selectedIndex);
+				}else{
+					var selectXML:XML =  MenuTree.selectedItem as XML;
+					if(selectXML.hasComplexContent()){
+						//Alert.show("enter1");
+						MenuTree.expandItem(selectXML,true);
+						MenuTree.selectedIndex = MenuTree.selectedIndex +1;
+						MenuTree.scrollToIndex(MenuTree.selectedIndex);
+						//MenuTree.addEventListener(FlexEvent.UPDATE_COMPLETE,moveNextTreeHandler);
+					}else{
+						MenuTree.selectedIndex = MenuTree.selectedIndex+1;
+						MenuTree.scrollToIndex(MenuTree.selectedIndex);
+					}
+				}		
+				treeClickHandler(event);			
+			}
+			protected function moveNextTreeHandler(event:FlexEvent):void{
+				Alert.show("enter");
+				MenuTree.selectedIndex = MenuTree.selectedIndex +1;
+				MenuTree.scrollToIndex(MenuTree.selectedIndex);
+				MenuTree.removeEventListener(FlexEvent.UPDATE_COMPLETE,moveNextTreeHandler);
+			}
+			
+			protected function resizeSWF(type:int):void
+			{	
+				if(rightSwfLoader.height<0||rightSwfLoader.width<0){
+					largerButton.enabled = false;
+					smallerButton.enabled = false;
+					originalButton.enabled = true;
+					return;
+				}
+				
+				if(type==0){
+					//					if(rightSwfLoader.height>rightSwfContainer.minHeight*4||rightSwfLoader.width>rightSwfContainer.minHeight*4){
+					//						largerButton.enabled=false;
+					//						return;
+					//					}
+					smallerButton.enabled=true;
+					originalButton.enabled = true;
+					
+					rightSwfLoader.height*=1.2;
+					rightSwfLoader.width*=1.2;
+					
+					rightSwfLoader.buttonMode= true;			
+					rightSwfLoader.mouseChildren = false;		
+				}else if(type==1){
+					//					if(rightSwfLoader.height<rightSwfContainer.height/4||rightSwfLoader.width<rightSwfContainer.width/4){
+					//						smallerButton.enabled=false;
+					//						return;
+					//					}
+					if(rightSwfLoader.width<=SWFWIDTH || rightSwfLoader.height<=SWFHEIGHT){
+						return;
+					}
+					largerButton.enabled=true;
+					originalButton.enabled = true;		
+					rightSwfLoader.height/=1.2;
+					rightSwfLoader.width/=1.2;
+					
+				}else if(type==2){
+					smallerButton.enabled=true;
+					largerButton.enabled=true;
+					rightSwfLoader.width = SWFWIDTH;
+					rightSwfLoader.height = SWFHEIGHT;
+					
+					rightSwfLoader.x = 0;
+					rightSwfLoader.y = 0;
+					
+					if(leftTree.x<0){
+						SET_PAGE_LEFT_NOT = true;
+					}else{
+						SET_PAGE_LEFT_NOT = false;
+					}
+					rightSwfLoader.addEventListener(FlexEvent.UPDATE_COMPLETE,rightSwfLoader_updateHandler)
+				}
+				//				this.addEventListener(NativeWindowDisplayStateEvent.DISPLAY_STATE_CHANGE,dispalyHandler);
+				//				this.addEventListener(NativeWindowDisplayStateEvent.DISPLAY_STATE_CHANGING,displayBeforeHandler);
+			}
+			
+			protected function lastItem(event:MouseEvent):void
+			{
+				if(leftTree.x<0){
+					return;
+				}
+				var selectIndex:int = MenuTree.selectedIndex;
+				
+				var expandIndex:int = MenuTree.selectedIndex - 1;
+				if(expandIndex <= 0){
+					selectIndex = 0;
+					MenuTree.selectedIndex = 0;
+					MenuTree.scrollToIndex(MenuTree.selectedIndex);
+				}else{
+					var selectXML:XML =MenuTree.selectedItem as XML;
+					
+					MenuTree.selectedIndex = expandIndex;
+					var expandXML:XML = MenuTree.selectedItem as XML;
+					if(expandXML.hasComplexContent()){
+						//MenuTree.expandChildrenOf(expandXML,true);
+						MenuTree.expandItem(expandXML,true);
+						//MenuTree.selectedIndex = MenuTree.selectedIndex -1;
+						//MenuTree.scrollToIndex(MenuTree.selectedIndex);
+						while(expandXML!= selectXML){
+							expandIndex++;
+							MenuTree.selectedIndex = expandIndex;
+							expandXML = MenuTree.selectedItem as XML;
+							MenuTree.expandItem(expandXML,true);
+						}
+						MenuTree.selectedIndex = expandIndex-1;
+						MenuTree.scrollToIndex(MenuTree.selectedIndex);
+						MenuTree.addEventListener(FlexEvent.UPDATE_COMPLETE,moveLastTreeHandler);
+					}else{
+						MenuTree.scrollToIndex(MenuTree.selectedIndex);
+					}
+				}
+				treeClickHandler(event);		
+			}
+			protected function moveLastTreeHandler(event:FlexEvent):void{
+				MenuTree.scrollToIndex(MenuTree.selectedIndex);
+				MenuTree.removeEventListener(FlexEvent.UPDATE_COMPLETE,moveNextTreeHandler);
+			}
+			
+			protected function treeClickHandler(event:MouseEvent):void{ 
+				for(var j:int = 0;j<radioVGroup.numChildren;j++){
+					radioVGroup.getChildAt(j).visible = false; //显示选项
+				}
+				
+				/*for(var k:int = 0;k<rightSwfLoader.numChildren;k++){
+				rightSwfLoader.removeChildAt(k);
+				}
+				if(ns){
+				ns.dispose();//清除视频流
+				}*/
+				
+				rightSwfLoader.stopDrag();
+				rightVideoLoader.source = "";
+				rightVideoLoader.visible = false;
+				
+				nextQst.visible = false;
+				quizSwfLoader.source = "";
+				curPage = 1;
+				curQuesion = 0;
+				msg.text = "";
+				msgPage.text = "";
+				
+				if(MenuTree.selectedItem){
+					if(MenuTree.selectedItem.hasOwnProperty("@url" )){
+						var type: int = MenuTree.selectedItem.@type;
+						if(type==1){					
+							loadSwfToRight();//如果加载的是swf文件		
+						}else if(type==2){				 		
+							loadVideoToRight(); //如果加载的是视频文件					 
+						}else{
+							var Quiz_XML_Path: String = MenuTree.selectedItem.@url;//练习题文件路径	 
+							var quizXMLURL:URLRequest = new URLRequest("swf/" + Quiz_XML_Path); 
+							var quizLoader:URLLoader = new URLLoader(quizXMLURL);
+							quizLoader.addEventListener(Event.COMPLETE, quizLoadedhandle);	
+						}
+					}
+					
+					middleImage.source = "img/middle.png";
+					if(MenuTree.selectedItem.hasOwnProperty("@image" )){
+						var imgDir:String = "img/" + MenuTree.selectedItem.@image;	
+						var imgLevelone:File = File.applicationDirectory;
+						imgLevelone = imgLevelone.resolvePath(imgDir);
+						if(imgLevelone.exists&&!imgLevelone.isDirectory){
+							middleImage.source = imgLevelone.nativePath;
+						}
+					}		
+					MenuTree.expandItem(MenuTree.selectedItem,!MenuTree.isItemOpen(MenuTree.selectedItem),true); 	
+				}
+			}		
+			
+			protected function loadSwfToRight():void{
+				rightQuiz.visible = false;		
+				rightSwfLoader.visible = true;
+				pagelabel.visible = true;
+				prev.visible = false;
+				next.visible = false;
+				
+				//Alert.show(MenuTree.getStyle("fontSize"));获取属性值
+				var dir:String = "swf/" + MenuTree.selectedItem.@url;	
+				pageSize = MenuTree.selectedItem.@page;
+				
+				if(pageSize>1){
+					pagelabel.text="1页/"+pageSize+"页";
+					next.visible=true;
+				}else if(pageSize<=1){
+					pagelabel.text="1页/1页";
+					prev.visible=false;
+					next.visible=false;
+				}				
+				
+				var levelone:File = File.applicationDirectory;
+				levelone = levelone.resolvePath(dir);
+				
+				if(levelone.exists){	
+					if(levelone.isDirectory){
+						/*
+						var levelone_files: Array = levelone.getDirectoryListing();				
+						if(levelone_files!=null && levelone_files.length>0){							
+						for(var i:int=0;i<levelone_files.length;i++){				  
+						var levelone_file:File = levelone_files[i] as File;
+						
+						if(levelone_file.exists){
+						if(levelone_file.isDirectory){
+						}else{
+						rightSwfLoader.x = 0;
+						rightSwfLoader.y = 0;
+						rightSwfLoader.percentHeight = 100;
+						rightSwfLoader.percentWidth = 100;
+						dirCur = levelone_file.parent.nativePath;
+						rightSwfLoader.source = levelone_file.nativePath;
+						break;
+						}
+						}		 
+						}					
+						}*/
+					}else{	
+						rightSwfLoader.x = 0;
+						rightSwfLoader.y = 0;
+						rightSwfLoader.percentHeight = 100;
+						rightSwfLoader.percentWidth = 100;
+						rightSwfLoader.source = levelone.nativePath;
+						dirCur = levelone.nativePath; //new 			
+					}
+				}
+			}
+			
+			
+			protected function loadVideoToRight():void{	
+				rightQuiz.visible = false;
+				//rightSwfLoader.visible = true;
+				rightSwfLoader.source = "";
+				rightVideoLoader.visible = true;
+				prev.visible = false;
+				next.visible = false;	
+				
+				var dir:String = "swf/" + MenuTree.selectedItem.@url;	
+				var levelone:File = File.applicationDirectory;
+				levelone = levelone.resolvePath(dir);
+				
+				if(levelone.exists){
+					if(levelone.isDirectory){			
+					}else{	
+						rightVideoLoader.source = levelone.nativePath;	 
+					}	
+				}
+			}
+			
+			private var headTitle:String;
+			private var timeout:int;
+			private var number:int;
+			private var passMsg:String;
+			private var failMsg:String;
+			
+			private var rightface:String;
+			private var wrongface:String;	
+			private var rightMsg:String;
+			private var wrongMsg:String;	
+			
+			private var timeoverface:String;
+			private var resultface:String;
+			private var totalQuesion:int;
+			private var quizList : ArrayCollection = new ArrayCollection();
+			private var score:int = 0;
+			private var total:int = 0;
+			
+			private var timer:Timer;
+			private var multi:String;
+			
+			protected function quizLoadedhandle(event:Event):void{ 
+				var quizXML:XML = XML(event.target.data);
+				rightQuiz.visible = true; 
+				rightSwfLoader.visible = false;
+				quizSelection.enabled = true;
+				timeOutSwfLoader.visible = false;
+				
+				score = 0;
+				total = 0;
+				multi = "false";
+				prev.visible = false;
+				next.visible = false;	
+				pagelabel.visible = false;
+				
+				headTitle = quizXML.@title;
+				timeout = quizXML.@time;
+				number = quizXML.@number;
+				passMsg = quizXML.@pass;
+				failMsg = quizXML.@fail;
+				
+				rightface = quizXML.@rightface;
+				wrongface = quizXML.@wrongface;	
+				rightMsg = quizXML.@right;
+				wrongMsg = quizXML.@wrong;	
+				timeoverface = quizXML.@timeoverface;
+				resultface = quizXML.@resultface;
+				
+				quizList.removeAll();//清空测试题list
+				radioVGroup.removeAllElements();//清空测试题选项组
+				for(var i:int=0;i<quizXML.child("Question").length();i++){
+					var quiz:Object = new Object();
+					quiz.quesion = quizXML.Question[i].@Value;
+					quiz.weight = quizXML.Question[i].@Weight;
+					quiz.answer = quizXML.Question[i].@answer;
+					quiz.multi = quizXML.Question[i].@multi;
+					
+					var ans:ArrayCollection = new ArrayCollection();		
+					var ids:XMLList = quizXML.Question[i].child("Answers").@id;
+					var answers:XMLList = quizXML.Question[i].child("Answers").@value;
+					
+					for(var m:int=0;m<answers.length();m++){
+						var a:Object = new Object();
+						a.id = ids[m].toString();
+						a.value = answers[m].toString();		
+						ans.addItemAt(a,m);
+					}
+					quiz.selectList = ans;
+					quizList.addItemAt(quiz,i);
+				}
+				totalQuesion = quizList.length;
+				
+				msgPage.text = "1/" + totalQuesion;//显示题号
+				quizText.text = quizList.getItemAt(0).quesion;//显示试题内容
+				
+				var selections : ArrayCollection = new ArrayCollection();
+				selections = quizList.getItemAt(0).selectList;
+				
+				multi = quizList.getItemAt(0).multi;
+				if(multi=="true"){ //如果是多选题
+					for(var p:int=0;p<selections.length;p++){
+						var cb:CheckBox = new CheckBox();
+						cb.id = selections.getItemAt(p).id.toString();
+						cb.label = selections.getItemAt(p).value.toString();
+						cb.percentWidth = 100;
+						cb.addEventListener(MouseEvent.CLICK, checkboxClick);
+						radioVGroup.addElement(cb);
+					}
+				}else{//如果是单选题
+					for(var k:int=0;k<selections.length;k++){
+						var rb:RadioButton = new RadioButton();
+						rb.id = selections.getItemAt(k).id.toString();
+						rb.label = selections.getItemAt(k).value.toString(); 	
+						rb.groupName = "quizSelection";
+						rb.value = selections.getItemAt(k).id.toString();
+						rb.percentWidth = 100;
+						radioVGroup.addElement(rb);
+					}
+				}
+				
+				for(var j:int = 0;j<radioVGroup.numChildren;j++){
+					radioVGroup.getChildAt(j).visible = true; //显示选项
+				}
+				
+				if(timer!=null && timer.running){
+					timer.stop();
+				}
+				if(timeout>0){//如果设置的参数大于0，则提供倒计时功能，如果留空或者设为0，则无
+					timer = this.countTime(0,timeout,0);//倒计时
+					this.timeComplete();
+					timer.addEventListener(TimerEvent.TIMER, onTimer);
+					timer.start();
+				}	
+			} 
+			
+			protected function checkboxClick(event:Event):void{
+				var flag:Boolean = false;
+				for(var j:int = 0;j<radioVGroup.numChildren;j++){
+					var cb:CheckBox = radioVGroup.getChildAt(j) as CheckBox;
+					if(cb.selected){
+						flag = true;
+						break;
+					}		 
+				}	 
+				submitQst.visible = flag;		 
+				multi = flag? "true":"false";	 			
+			}
+			
+			public function selectQuiz(evt:ItemClickEvent):void{			
+				submitQst.visible = true;
+			}
+			
+			public function submitQ(value:int):void{
+				var answer:String = quizList.getItemAt(curQuesion).answer;
+				var mark:int = quizList.getItemAt(curQuesion).weight;
+				var sel:String="";
+				
+				if(multi=="true"){
+					for(var i:int = 0;i<radioVGroup.numChildren;i++){
+						var cb:CheckBox = radioVGroup.getChildAt(i) as CheckBox;
+						if(cb.selected){
+							sel += cb.id;
+						}
+					} 
+				}else{
+					sel = quizSelection.selectedValue.toString();
+				}	
+				
+				if(sel == answer){//答对
+					score++;
+					total += mark;
+					msg.text = rightMsg;
+					quizSwfLoader.source = "swf/" + rightface;
+				}else{//答错
+					msg.text = wrongMsg + answer;
+					quizSwfLoader.source = "swf/" + wrongface;
+				}
+				nextQst.visible = true;
+				quizSelection.enabled = false;
+				multi = "false";
+			}
+			
+			public function nextQ(value:int):void{
+				radioVGroup.removeAllElements();//清空radioVGroup
+				
+				nextQst.visible = submitQst.visible = false;
+				quizSelection.enabled = true;
+				msg.text = "";
+				quizSwfLoader.source = "";
+				
+				if(value < totalQuesion){	
+					msgPage.text = (value+1) +"/" + totalQuesion;
+					quizText.text = quizList.getItemAt(value).quesion;		
+					var selections : ArrayCollection = new ArrayCollection();		
+					selections = quizList.getItemAt(value).selectList;
+					
+					var multi:String = quizList.getItemAt(value).multi;
+					if(multi=="true"){
+						for(var p:int=0;p<selections.length;p++){
+							var cb:CheckBox = new CheckBox();
+							cb.id = selections.getItemAt(p).id.toString();
+							cb.label = selections.getItemAt(p).value.toString();
+							cb.addEventListener(MouseEvent.CLICK, checkboxClick);
+							cb.percentWidth = 100;
+							radioVGroup.addElement(cb);
+						}
+					}else{
+						for(var k:int=0;k<selections.length;k++){
+							var rb:RadioButton = new RadioButton();
+							rb.id = selections.getItemAt(k).id.toString();
+							rb.label = selections.getItemAt(k).value.toString(); 	
+							rb.groupName = "quizSelection";
+							rb.value = selections.getItemAt(k).id.toString();
+							rb.percentWidth = 100;
+							radioVGroup.addElement(rb);
+						}
+					}			
+					curQuesion = value;
+				}else{
+					var res:String ="您一共答对了"+ score +"道题！\n";
+					res += "总分："+total+"\n";
+					if(total >= number){ //获得的分数不少于定义好的数目
+						res+= passMsg;//通过信息
+					}else{
+						res+= failMsg;//没通过信息
+					}
+					quizText.text = res;
+					quizText.editable = false;
+					for(var i:int = 0;i<radioVGroup.numChildren;i++){
+						radioVGroup.getChildAt(i).visible = false; //隐藏选项
+					}
+				}
+			}  
+			
+			private var nowSelectedIndex:int = 0;
+			private var resetSelectedIndex:int = 0;
+			private var scroll:Boolean = false;
+			
+			private var scrollIndex:int = 0;
+			private var lastSelectedLabel:String="";
+			public function treeSearch(event:MouseEvent):void  
+			{   	
+				if(searchInput.text == null || searchInput.text == ""){
+					return;
+				}
+				//				for each(var item:XML in this.MenuTree.dataProvider)
+				//					this.MenuTree.expandChildrenOf(item,true);
+				MenuTree.expandChildrenOf(myXML,true);
+				expandComplete();
+				//				MenuTree.addEventListener("enentTreeExpand_event",enentTreeExpandevent);
+			}
+			
+			protected function enentTreeExpandevent(event:Event):void{
+				Alert.show("enter");
+				expandComplete();
+			}
+			
+			protected function expandComplete():void
+			{
+				//				Alert.show("nowSelectedIndex="+nowSelectedIndex+";MenuTree.selectedIndex="+MenuTree.selectedIndex);
+				if(MenuTree.selectedIndex == -1){
+					MenuTree.selectedIndex = 0;
+				}
+				if(resetSelectedIndex == 1){
+					nowSelectedIndex = MenuTree.selectedIndex;
+					
+				}else{
+					nowSelectedIndex = 0;
+				}
+				var lastXML:XML =  MenuTree.selectedItem as XML;
+				lastSelectedLabel = lastXML.@label;
+				//				Alert.show("lastSelectedLabel="+lastSelectedLabel);
+				
+				resetSelectedIndex = 1;
+				
+				MenuTree.selectedIndex = 0;
+				
+				var selectXML:XML = MenuTree.selectedItem as XML;
+				var rootXML:XML = selectXML.parent();
+				var treeLength:int = rootXML.descendants().length();
+				
+				MenuTree.selectedIndex = nowSelectedIndex;
+				
+				var outXML:XML = null;
+				
+				for(var i:int = nowSelectedIndex;i<(treeLength+nowSelectedIndex);){
+					var index:int = (i+1)%treeLength;
+					i++;
+					var searchedXML:XML = rootXML.descendants()[index];
+					
+					//outXML = searchText(searchXML);
+					if(!MenuTree.isItemOpen(searchedXML)){
+						MenuTree.expandChildrenOf(searchedXML,true);
+					}
+					if(searchedXML.@label.search(searchInput.text) >-1 && searchedXML.@label !=lastSelectedLabel){
+						outXML = searchedXML;
+						//						Alert.show("i="+i+";treeLength="+treeLength+";index="+index+";MenuTree.selectedIndex="+MenuTree.selectedIndex);
+						scrollTreeItem(index);
+						scrollIndex = index;
+						MenuTree.addEventListener("updateComplete",scrollTreeItemListener);
+						break;
+					}
+				}
+				if(outXML == null ){
+					Alert.show("没有匹配！");
+				}else{
+					//MenuTree.expandItem(MenuTree.selectedItem,!MenuTree.isItemOpen(MenuTree.selectedItem),true); 
+				}
+				//				MenuTree.removeEventListener("updateComplete",scrollTreeItemListener);
+			}
+			
+			protected function scrollTreeItemListener(event:FlexEvent):void
+			{
+				//				MenuTree.scrollToIndex(MenuTree.selectedIndex);
+				scrollTreeItem(scrollIndex);
+				//				Alert.show(";MenuTree.selectedIndex="+MenuTree.selectedIndex+";scrollIndex="+scrollIndex);
+				MenuTree.removeEventListener("updateComplete",scrollTreeItemListener);
+			}
+			
+			protected function scrollTreeItem(index:int):void
+			{
+				nowSelectedIndex = index;
+				MenuTree.selectedIndex = index;
+				MenuTree.scrollToIndex(index);
+			}
+			
+			private var SET_PAGE_LEFT_NOT:Boolean = true;
+			public function setPager(value:int):void{  
+				if(value <=0 || value > pageSize){  
+					return;  
+				}
+				var filepath: String = dirCur.substr(0,dirCur.lastIndexOf("_")+1);
+				if(pageSize<10){
+					filepath += "0" + value + dirCur.substring(dirCur.lastIndexOf("-"),dirCur.length);
+					
+				}else{
+					filepath += value + dirCur.substring(dirCur.lastIndexOf("-"),dirCur.length);
+				}
+				
+				rightSwfLoader.source = filepath;
+				rightSwfLoader.x = 0;
+				rightSwfLoader.y = 0;
+				rightSwfLoader.percentHeight = 100;
+				rightSwfLoader.percentWidth = 100;
+				
+				pagelabel.text = value+"页/"+ pageSize +"页";
+				
+				curPage = value;	 
+				prev.visible = (curPage == 1)? false:true;
+				next.visible = (curPage == pageSize)? false:true;	
+				
+				if(leftTree.x<0){
+					SET_PAGE_LEFT_NOT = true;
+				}else{
+					SET_PAGE_LEFT_NOT = false;
+				}
+				rightSwfLoader.addEventListener(FlexEvent.UPDATE_COMPLETE,rightSwfLoader_updateHandler)
+			}
+			
+			protected function rightSwfLoader_updateHandler(event:FlexEvent):void   //变之后
+			{
+				if(SET_PAGE_LEFT_NOT){
+					leftTree.x = -leftTree.width;
+					rightSwf.x = 30;
+					rightSwf.y = 30;
+				}
+				rightSwfLoader.removeEventListener(FlexEvent.UPDATE_COMPLETE,rightSwfLoader_updateHandler);
+			}	
+			
+			private var rightWasWidth:int;
+			private var rightWasHeight:int;
+			private function moveImage():void{  
+				var leftWidth:int = leftTree.width;
+				if(moveLeftEffect.xTo == -leftWidth){
+					moveLeftEffect.end();
+					moveLeftEffect.xTo=0;  
+					moveLeftEffect.play(); 
+					
+					moveRightEffect.end();  
+					moveRightEffect.xTo=leftWidth;
+					moveRightEffect.yTo=0;
+					
+					rightSwfLoader.maintainAspectRatio = true;
+					rightSwfLoader.width = rightWasWidth;
+					rightSwfLoader.height = rightWasHeight;
+					
+					moveRightEffect.play(); 
+					rightSwfLoader.horizontalCenter = 0;
+				}else{
+					moveLeftEffect.end();  
+					moveLeftEffect.xTo=-leftWidth;  
+					moveLeftEffect.play();
+					
+					moveRightEffect.end();  
+					moveRightEffect.xTo=30; 
+					moveRightEffect.yTo=30;
+					
+					rightWasWidth = rightSwfLoader.width;
+					rightWasHeight = rightSwfLoader.height;
+					
+					rightSwfLoader.maintainAspectRatio = false;
+					rightSwfLoader.width = middlePanel.width - 60;
+					rightSwfLoader.height = middlePanel.height - 60;
+					
+					moveRightEffect.play(); 
+					rightSwfLoader.horizontalCenter = 0;
+				}
+			}		
+			
+			protected function searchInput_changeHandler(event:TextOperationEvent):void{
+				resetSelectedIndex =0;
+			}
+			
+			public var h_num:int=0;
+			public var m_num:int=0;
+			public var s_num:int=0;
+			
+			public function countTime(hour:int, minute:int, second:int):Timer
+			{
+				h_num = hour;
+				m_num = minute;
+				s_num = second;
+				timer = new Timer(1000,0);
+				return timer;
+			}
+			
+			private function onTimer(event:TimerEvent):void
+			{
+				s_num = s_num - 1;
+				
+				if ((s_num == -1) && (m_num > 0)) 
+				{
+					m_num = m_num - 1;
+					s_num = 59;
+				}
+				if ((m_num == 0) && (h_num > 0))
+				{
+					h_num = h_num -1;
+					m_num = 59;
+					s_num = 59;
+				}
+				
+				if (s_num < 0)
+				{
+					s_num = 0;
+					timer.stop();
+					
+					quizText.text = "";
+					quizText.editable = false;
+					for(var i:int = 0;i<radioVGroup.numChildren;i++){
+						radioVGroup.getChildAt(i).visible = false; //隐藏选项
+					}
+					submitQst.visible = nextQst.visible = quizSwfLoader.visible = false;
+					msg.text = msgPage.text = "";
+					
+					timeOutSwfLoader.visible = true;
+					timeOutSwfLoader.depth = 10;
+					timeOutSwfLoader.source = "swf/" + timeoverface;
+					
+				}
+				
+				var hh:String;
+				var mm:String;
+				var ss:String;
+				hh = (h_num < 10) ? "0" + h_num.toString() : h_num.toString();
+				mm =  (m_num < 10) ? "0" + m_num.toString() : m_num.toString();
+				ss = (s_num < 10) ? "0" + s_num.toString() : s_num.toString();
+				quizTitle.title = headTitle + hh + ":" + mm + ":" + ss; 
+			}
+			
+			private function timeComplete():void
+			{
+				var hh:String;
+				var mm:String;
+				var ss:String;
+				hh = (h_num < 10) ? "0" + h_num.toString() : h_num.toString();
+				mm =  (m_num < 10) ? "0" + m_num.toString() : m_num.toString();
+				ss = (s_num < 10) ? "0" + s_num.toString() : s_num.toString();
+				quizTitle.title = headTitle + hh + ":" + mm + ":" + ss; 
+			}
+			
+			
+			//以下为测试方法
+			private var bmp:Bitmap;
+			private var _loader:Loader;
+			private var _url:URLRequest;
+			private var imgurl:String = "img/catalog.png";
+			protected function button1_clickHandler(event:MouseEvent):void
+			{
+				//				MenuTree.expandChildrenOf(myXML,true);
+				//				MenuTree.addEventListener("enentTreeExpand_event",enentTreeExpandevent);
+				_url = new URLRequest(imgurl);
+				_loader = new Loader();
+				_loader.load(_url); 
+				_loader.contentLoaderInfo.addEventListener(Event.COMPLETE,loaderHander);		
+			}
+			
+			protected function loaderHander(evt:Event):void{		
+				bmp=Bitmap(_loader.content);
+				catalogButton.setStyle("icon",bmp);
+			}
+			
+			protected function swfmouseDownHandler(event:MouseEvent):void
+			{
+				rightSwfLoader.startDrag(false, null);
+			}
+			
+			protected function swfmouseUpHandler(event:MouseEvent):void
+			{
+				rightSwfLoader.stopDrag();
+			}
+			
+			protected function swfmouseMoveHandler(event:MouseEvent):void
+			{	 
+				rightSwfLoader.useHandCursor = true;
+				rightSwfLoader.buttonMode = true;
+			}
+			
+			private function swfmouseOutHandler(event:MouseEvent):void
+			{
+				rightSwfLoader.useHandCursor = false;
+				rightSwfLoader.buttonMode = false;
+			}
+			
+			protected function rightSwf_mouseWheelHandler(event:MouseEvent):void
+			{
+				rightSwfLoader.y += event.delta;
+			}
+			
+			private var SWFLOADER_CHANGE:Boolean = false;
+			protected function rightSwfLoader_resizeHandler(event:ResizeEvent):void      //变之前
+			{
+				//得到变化前的信息
+				if(leftTree.x<0){
+					SWFLOADER_CHANGE = true;
+				}else{
+					SWFLOADER_CHANGE = false;
+				}
+				rightSwfLoader.addEventListener(FlexEvent.UPDATE_COMPLETE,rightSwfLoader_stateChangeHandler);
+			}
+			protected function rightSwfLoader_stateChangeHandler(event:FlexEvent):void   //变之后
+			{
+				if(SWFLOADER_CHANGE){
+					leftTree.x = -leftTree.width;
+					rightSwf.x = 30;
+					rightSwf.y = 30;
+				}
+				rightSwfLoader.removeEventListener(FlexEvent.UPDATE_COMPLETE,rightSwfLoader_stateChangeHandler);
+			}
+		]]> 
+	</fx:Script> 
+	
+	<mx:ViewStack id="myViewStack" borderStyle="solid" width="100%" height="100%" creationComplete="welcomeLoaderInit()">
+		<mx:Canvas id="load" label="load" width="100%" height="100%" creationComplete="welcomeInit()" horizontalScrollPolicy="off" verticalScrollPolicy="off">    
+			<s:SWFLoader id="welcomeLoader" width="100%" height="100%" maintainAspectRatio="false" />
+			<s:Button id="welcomeLoaderButton" x="835" y="660" width="85" height="39" label="跳过" buttonMode="true"  useHandCursor="true" click="myViewStack.selectedChild=text;" icon="img/skipwelcome.png"/>
+			<s:SWFLoader id="welcomeLoaderSwf" x="835" y="660"  buttonMode="true"  useHandCursor="true" click="myViewStack.selectedChild=text;" source="img/skipwelcome.swf"/>
+		</mx:Canvas>
+		<mx:Canvas id="text" label="text" width="100%" height="100%"  creationComplete="init();" horizontalScrollPolicy="off" verticalScrollPolicy="off">  
+			<!--s:Image id="topImage" x="0" y="0" width="100%" height="78" horizontalAlign="left"/>
+			<s:Image id='middleImage' x="0" y="78" width="100%" height="631" horizontalAlign="left" />
+			<s:Image id="downImage" x="0" y="709" width="100%" height="59"  horizontalAlign="left" source="img/down.png"/-->
+			<mx:VBox borderVisible="false" borderStyle="none" width="100%" height="100%" horizontalGap="0" verticalGap="0" paddingLeft="0" paddingRight="0" paddingTop="0" paddingBottom="0">
+				
+				<s:BorderContainer top="3"  width="100%" height="10.19%" borderVisible="false" borderWeight="0">
+					<s:Image id="topImage" width="100%" height="100%" horizontalAlign="left"  scaleMode="stretch"/>
+					<s:SWFLoader id="topSwf"  x="0" y="0" source="img/skipwelcome.swf" width="100%" height="100%" maintainAspectRatio="false" />
+					
+					<mx:HBox width="100%" height="100%"  borderVisible="false" borderStyle="none"  horizontalGap="10" verticalGap="0" paddingLeft="0" paddingRight="0" paddingTop="0" paddingBottom="0">
+						<s:BorderContainer visible="false" width="45%" height="100%">
+							<s:backgroundFill>
+								<s:SolidColor  color="0xffffff" alpha="0"/>
+							</s:backgroundFill>
+						</s:BorderContainer>
+						<mx:VBox width="55%" height="100%">
+							<s:BorderContainer visible="false" width="90%" height="90%">
+								<s:backgroundFill>
+									<s:SolidColor  color="0xffffff" alpha="0"/>
+								</s:backgroundFill>
+							</s:BorderContainer>
+							
+							<mx:TabNavigator id="mytab" height="27" tabWidth="71" backgroundAlpha="0"  borderVisible="false" change="changeTabSelection(event)"/>				 
+						</mx:VBox>
+					</mx:HBox>
+				</s:BorderContainer>
+				
+				<s:BorderContainer id="middlePanel" width="100%" height="83.161%" borderVisible="false" borderWeight="0">
+					<s:Image top="0" id="middleImage" width="100%" height="100%" horizontalAlign="left"  scaleMode="stretch"/>
+					<mx:HBox  borderVisible="false" borderStyle="none" width="100%" height="100%" horizontalGap="0" verticalGap="0" paddingLeft="0" paddingRight="0" paddingTop="0" paddingBottom="0">
+						
+						<s:BorderContainer top="3" id="leftTree" width="26.171%" height="100%" borderVisible="false">
+							<s:Image top="1" x="0" y="0" width="100%" height="100%" horizontalAlign="left" source="img/left.png" scaleMode="stretch"/>
+							<s:Label x="61" y="20" width="145" height="28" fontSize="16" text="=== 课件目录 ==="
+									 textAlign="center" verticalAlign="middle"/>
+							<mx:VBox y="73" left="6" right="10" width="100%" height="87%">
+								<teach:AutoSizeTree id="MenuTree" height="100%"
+													width="100%" click="treeClickHandler(event)"
+													defaultLeafIcon="@Embed(source='img/treeleaf.png')"
+													folderClosedIcon="@Embed(source='img/folderclose.png')"
+													folderOpenIcon="@Embed(source='img/folderopen.png')"
+													fontSize="12" indentation="17" labelField="@label"
+													showRoot="false">
+								</teach:AutoSizeTree> 
+								<mx:HBox left="20" width="100%" paddingLeft="25">
+									<s:TextInput id="searchInput" width="122" height="33"
+												 change="searchInput_changeHandler(event)" />
+									<s:Button x="159" y="577" width="64" height="33" label="搜索" click="treeSearch(event)" icon="img/searchbutton.png"/>
+								</mx:HBox>
+							</mx:VBox>				
+						</s:BorderContainer>
+						
+						<s:BorderContainer top="0"  id="rightSwf" width="73.828%" height="100%" borderVisible="false" mouseWheel="rightSwf_mouseWheelHandler(event)">
+							<!--	<s:Scroller  width="100%" height="100%" horizontalScrollPolicy="off" verticalScrollPolicy="off">-->
+							<s:Group id="myScroller"  clipAndEnableScrolling="true">
+								<s:BorderContainer id="rightSwfContainer" borderVisible="false" width="100%">
+									<s:SWFLoader id="rightSwfLoader" horizontalAlign="left"    
+												 mouseDown="swfmouseDownHandler(event)" mouseUp="swfmouseUpHandler(event)" 
+												 mouseOver="swfmouseMoveHandler(event)" mouseOut="swfmouseOutHandler(event)"
+												 maintainAspectRatio="true"  source="swf/slide-test2.swf" resize="rightSwfLoader_resizeHandler(event)"/>
+									
+									<s:VideoPlayer id="rightVideoLoader" verticalCenter="0" horizontalCenter="0" visible="false" width="65%" height="65%" autoPlay="true" loop="true"/>
+									
+									<mx:VBox id="rightQuiz" visible="false" paddingLeft="30" paddingRight="0" paddingTop="30" paddingBottom="0">
+										<s:Panel id="quizTitle" fontSize="17"  width="70%" height="60%" horizontalCenter="0">
+											<s:SWFLoader id="timeOutSwfLoader"/>
+											<s:TextArea id="quizText" width="100%" fontSize="15" textAlign="left" paddingBottom="10"/>
+											<s:VGroup id="radioVGroup"  left="20" right="10" top="30" bottom="10" paddingTop="30"/>
+										</s:Panel>
+										
+										<mx:HBox width="100%">
+											<s:SWFLoader id="quizSwfLoader" maxWidth="350" width="350"  maxHeight="220" height="220" maintainAspectRatio="false" />
+											<s:Button id="submitQst" visible="false"  width="75" height="29" label="提交" click="submitQ(curQuesion);" />
+											<s:Button id="nextQst" visible="false" width="75" height="29" label="下一题" click="nextQ(curQuesion + 1);" />
+											<s:Label id="msg" width="145" fontSize="13" height="29" />
+											<s:Label id="msgPage" width="145" fontSize="13" height="29" />		
+										</mx:HBox>	
+									</mx:VBox>
+									
+									<s:backgroundFill>
+										<s:SolidColor  color="0xffffff" alpha="0"/>
+									</s:backgroundFill>
+								</s:BorderContainer>
+							</s:Group>
+							<!--</s:Scroller> -->
+							<s:backgroundFill>
+								<s:SolidColor  color="0xffffff" alpha="0"/>
+							</s:backgroundFill>
+						</s:BorderContainer>		
+						
+					</mx:HBox>
+				</s:BorderContainer>
+				
+				<s:BorderContainer width="100%" height="7.69%" borderVisible="false" borderWeight="0">
+					<s:Image top="3" id="downImage" width="100%" height="100%"  horizontalAlign="left" source="img/down.png" scaleMode="stretch"/>
+					
+					<mx:HBox visible="false" id="dowmButtonBox" x="24">
+						<mx:LinkButton id="catalogButton" overSkin="@Embed('img/catalog.png')" top="3" width="113" height="29" label="目录列表" click="moveImage()" icon="@Embed('img/catalog.png')"/>
+						<mx:LinkButton id="nextpageButton" overSkin="@Embed('img/nextpage.png')" top="3" width="113" height="29" label="下一节" click="nextItem(event)" icon="@Embed('img/nextpage.png')" />
+						<mx:LinkButton id="lastpageButton" overSkin="@Embed('img/lastpage.png')" top="3" width="113" height="29" label="上一节" click="lastItem(event)" icon="@Embed('img/lastpage.png')"/>
+					</mx:HBox>
+					<mx:HBox visible="true" id="dowmSwfBox" x="24" paddingRight="10">
+						<s:SWFLoader id="catalogSwf" width="113" height="29"  source="img/skipwelcome.swf" click="moveImage()" />
+						<s:SWFLoader id="nextpageSwf" width="113" height="29"  source="img/skipwelcome.swf" click="nextItem(event)"/>
+						<s:SWFLoader id="lastpageSwf" width="113" height="29"  source="img/skipwelcome.swf" click="lastItem(event)"/>
+					</mx:HBox>
+					
+					<mx:LinkButton id="prev" overSkin="@Embed('img/syy.png')" visible="false" x="559" top="3" width="71" height="26" label="上一页" click="setPager(curPage - 1);" icon="@Embed('img/syy.png')"/>  
+					<mx:LinkButton id="next" overSkin="@Embed('img/xyy.png')" visible="false" x="629" top="3" width="71" height="26" label="下一页" click="setPager(curPage + 1);" icon="@Embed('img/xyy.png')"/>		
+					<mx:LinkButton id="largerButton" overSkin="@Embed('img/fd.png')" x="719" top="3" width="71" height="26" label="放大" click="resizeSWF(0)" icon="@Embed('img/fd.png')"/>
+					<mx:LinkButton id="smallerButton" overSkin="@Embed('img/sx.png')" x="799" top="3" width="71" height="26" label="缩小" click="resizeSWF(1)" icon="@Embed('img/sx.png')"/>		 
+					<mx:LinkButton id="originalButton" overSkin="@Embed('img/hy.png')"  x="879" top="3" width="71" height="26" label="还原" click="resizeSWF(2)" icon="@Embed('img/hy.png')"/>
+					<s:Label id="pagelabel"  x="949" top="3" width="79" height="29" text="1页/1页" textAlign="center" verticalAlign="middle"/>
+				</s:BorderContainer>
+				
+			</mx:VBox>
+			
+			<!--s:Label x="35" y="51" width="435" height="26" fontSize="14" text="填写目录"/-->
+		</mx:Canvas>
+	</mx:ViewStack>
+</s:WindowedApplication>
